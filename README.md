@@ -43,3 +43,42 @@ LBproject/
 │   └── skill_gap_recommender.joblib
 └── docs/
     └── screenshots/                     # UI & API screenshots for documentation
+
+
+
+How to Run
+1. Set Up the Environment
+Bash
+git clone [https://github.com/FahiimReza/LBproject.git](https://github.com/FahiimReza/LBproject.git)
+cd LBproject
+python -m venv venv
+# Windows (PowerShell):
+.\venv\Scripts\Activate.ps1
+# Linux / macOS:
+source venv/bin/activate
+pip install -r requirements.txt
+2. Start the Server
+Bash
+uvicorn main:app --reload
+Web UI: http://127.0.0.1:8000/
+
+Interactive API Docs (Swagger): http://127.0.0.1:8000/docs
+
+3. Check Health & Run Tests
+Bash
+curl [http://127.0.0.1:8000/api/v1/health](http://127.0.0.1:8000/api/v1/health)
+python test_all_cases.py
+API Endpoints
+GET /api/v1/health — Reports loaded models, ASR/BERT status, edge logging flag, and app version.
+
+GET /api/v1/metrics — Returns reported evaluation metrics across classifier, HMM, guardrail, and ranker components.
+
+POST /api/v1/transcribe-audio — Accepts an audio file (.wav, .mp3, .m4a, .flac, .ogg, .webm) and returns the Whisper transcript.
+
+POST /api/v1/match — Classifies trade, computes wage advice and guardrail risk, ranks nearby workers, and returns skill gaps without broadcasting.
+
+POST /api/v1/broadcast_job — Runs matching and creates a pending broadcast record in memory.
+
+POST /api/v1/accept_job — Assigns a pending broadcast job to a notified worker (job_id, worker_id).
+
+GET /api/v1/jobs/{job_id} — Fetches current broadcast status and assigned worker.
