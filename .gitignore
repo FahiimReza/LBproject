@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+*.pyc
+logs/
+benchmark_history.jsonl
+checkpoints/whisper-banspeech-dhaka-slang-final/
+checkpoints/banglishbert_trade/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.wav
+*.mp3
+*.csv

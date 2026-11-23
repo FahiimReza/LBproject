@@ -1,0 +1,1431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LABOR-HUB // ASTRA-STYLE ML TELEMETRY GRAPH</title>
+<style>
+:root{
+  --bg:#020203;
+  --panel:#070709;
+  --panel-2:#0c0c10;
+  --ink:#f1ebde;
+  --muted:#8e887d;
+  --line:#262118;
+  --line-bright:#4d4028;
+  --gold:#e0a946;
+  --gold-bright:#ffd37a;
+  --gold-dim:rgba(224,169,70,.18);
+  --glow-sm:0 0 12px rgba(224,169,70,.24);
+  --glow-md:0 0 24px rgba(224,169,70,.36), 0 0 8px rgba(255,211,122,.22);
+  --glow-lg:0 0 36px rgba(224,169,70,.48), inset 0 0 18px rgba(224,169,70,.14);
+  --good:#42d392;
+  --warn:#f0b243;
+  --bad:#f25f5c;
+  --mono:"JetBrains Mono","Fira Code",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:"Noto Sans Bengali","Hind Siliguri","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font:13px/1.45 var(--mono);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+}
+body{
+  background-color:#020203;
+  background-image:
+    radial-gradient(circle at 18% 16%, rgba(224,169,70,.12), transparent 34%),
+    radial-gradient(circle at 82% 58%, rgba(255,211,122,.085), transparent 40%),
+    radial-gradient(circle at 52% 92%, rgba(224,169,70,.08), transparent 45%),
+    linear-gradient(rgba(224,169,70,.024) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(224,169,70,.024) 1px, transparent 1px);
+  background-size:100% 100%, 100% 100%, 100% 100%, 28px 28px, 28px 28px;
+}
+
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:8px 18px;border-bottom:1px solid var(--line-bright);
+  background:rgba(2,2,3,.96);box-shadow:0 2px 24px rgba(224,169,70,.12);
+  position:sticky;top:0;z-index:50;font-size:11px;letter-spacing:.06em;text-transform:uppercase
+}
+.topbar-left,.topbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pulse-dot{
+  width:8px;height:8px;border-radius:50%;background:var(--gold-bright);
+  box-shadow:0 0 12px var(--gold-bright), 0 0 24px var(--gold);animation:blink 1.8s infinite
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.32}}
+.pill{
+  padding:2px 8px;border:1px solid var(--line-bright);background:#050507;
+  color:var(--muted);border-radius:2px;font-size:10.5px;white-space:nowrap;
+  box-shadow:inset 0 0 10px rgba(224,169,70,.06)
+}
+.pill b{color:var(--gold-bright);font-weight:600}
+.pill.ok{border-color:rgba(66,211,146,.5);color:var(--good);box-shadow:0 0 12px rgba(66,211,146,.16)}
+.pill.bad{border-color:rgba(242,95,92,.5);color:var(--bad);box-shadow:0 0 12px rgba(242,95,92,.18)}
+
+.zoom-group{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:1px 4px;border:1px solid var(--line-bright);border-radius:2px;background:#050507;
+}
+.zoom-group span{
+  min-width:36px;text-align:center;color:var(--gold-bright);font-size:10.5px;font-weight:600;
+}
+.zoom-group button{
+  padding:1px 6px;font-size:10.5px;border:none;background:transparent;box-shadow:none;
+}
+.zoom-group button:hover{
+  background:var(--gold-dim);color:var(--gold-bright);box-shadow:none;
+}
+
+.workspace{
+  max-width:1580px;margin:12px auto 0;padding:0 16px;
+  display:grid;grid-template-columns:368px 140px 1fr;gap:0;align-items:stretch;
+  position:relative
+}
+.left-col,.right-col{position:relative;z-index:5;pointer-events:none}
+.left-col > *,.right-col > *{pointer-events:auto}
+.spine-col{position:relative;width:100%;min-height:100%;pointer-events:none;z-index:4}
+@media(max-width:1220px){.workspace{grid-template-columns:348px 70px 1fr}}
+@media(max-width:960px){
+  .workspace{grid-template-columns:1fr;gap:12px}
+  .spine-col{display:none}
+}
+
+.node-card{
+  background:linear-gradient(180deg, rgba(11,11,15,.98) 0%, rgba(4,4,6,.99) 100%);
+  border:1px solid var(--line);border-radius:4px;
+  padding:0;margin-bottom:10px;position:relative;overflow:hidden;
+  box-shadow:0 0 16px rgba(0,0,0,.85), inset 0 0 12px rgba(224,169,70,.035);
+  transition:border-color .25s, box-shadow .25s;
+  transform:none;
+  z-index:var(--z, 1);
+}
+.node-card.moved{
+  transform:translate(var(--dx, 0px), var(--dy, 0px));
+}
+.node-card.dragging{
+  z-index:45 !important;
+  border-color:var(--gold-bright);
+  box-shadow:0 12px 36px rgba(0,0,0,.92), var(--glow-lg);
+  transition:none;
+  user-select:none;
+}
+.node-card::before{
+  content:"";position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg, transparent, rgba(255,211,122,.55), transparent);
+  background-size:200% 100%;opacity:.45;pointer-events:none;z-index:2;
+  animation:cardScan 5.5s linear infinite;
+}
+.node-card:nth-child(2n)::before{animation-delay:-1.8s}
+.node-card:nth-child(3n)::before{animation-delay:-3.4s}
+.node-card.active-stage::before{
+  height:2px;opacity:1;
+  background:linear-gradient(90deg, transparent, var(--gold-bright), #fff3cf, var(--gold-bright), transparent);
+  background-size:200% 100%;animation:cardScan 1.1s linear infinite;
+}
+@keyframes cardScan{
+  0%{background-position:120% 0}
+  100%{background-position:-120% 0}
+}
+.node-card:hover{
+  border-color:rgba(224,169,70,.42);
+  box-shadow:0 0 22px rgba(224,169,70,.16), inset 0 0 14px rgba(224,169,70,.06);
+}
+.node-card.active-stage{
+  border-color:var(--gold-bright);
+  box-shadow:var(--glow-lg);
+}
+.node-card.done-stage{
+  border-color:var(--line-bright);
+  box-shadow:0 0 18px rgba(224,169,70,.14), inset 0 0 12px rgba(224,169,70,.05);
+}
+.node-card.node-ping{
+  box-shadow:0 0 42px rgba(255,211,122,.55), inset 0 0 20px rgba(224,169,70,.2);
+}
+.nc-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 10px;border-bottom:1px solid var(--line);background:#050507;
+  font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  cursor:grab;touch-action:none
+}
+.nc-head:active{cursor:grabbing}
+.node-card.active-stage .nc-head{
+  background:var(--gold);color:#060503;font-weight:700;
+  box-shadow:0 0 18px rgba(224,169,70,.45)
+}
+.node-card.active-stage .nc-head span{color:#060503}
+.nc-head .tag{color:var(--gold-bright)}
+.nc-body{padding:10px}
+
+#wireSvg{
+  position:absolute;top:0;left:0;width:100%;height:100%;
+  display:block;pointer-events:none;z-index:2;overflow:visible
+}
+.wire-base{fill:none;stroke:#332a1b;stroke-width:1.3}
+.wire-pulse{
+  fill:none;stroke:var(--gold-bright);stroke-width:2.5;
+  stroke-dasharray:22 156;stroke-dashoffset:178;opacity:0;
+  filter:drop-shadow(0 0 8px var(--gold-bright)) drop-shadow(0 0 14px var(--gold))
+}
+.wire-pulse.firing{opacity:1;animation:flowPulse 1.1s linear infinite}
+@keyframes flowPulse{to{stroke-dashoffset:0}}
+.bus-node{fill:#141009;stroke:var(--gold);stroke-width:1.35}
+.bus-node.lit{fill:var(--gold-bright)}
+.port-dot{fill:#050507;stroke:var(--gold);stroke-width:1.5}
+.port-dot.lit{fill:var(--gold-bright)}
+
+label{display:block;font-size:11px;color:var(--muted);margin:7px 0 3px;text-transform:uppercase;letter-spacing:.04em}
+input,select,textarea{
+  width:100%;padding:6px 8px;border:1px solid var(--line-bright);border-radius:3px;
+  background:#030304;color:var(--ink);font:12.5px/1.4 var(--mono)
+}
+textarea{
+  min-height:66px;resize:vertical;
+  font-family:var(--sans);font-size:14.5px;line-height:1.5;
+  letter-spacing:0;transition:border-color .2s, box-shadow .2s
+}
+textarea.asr-flash{
+  border-color:var(--good);
+  box-shadow:0 0 18px rgba(66,211,146,.35), inset 0 0 10px rgba(66,211,146,.12)
+}
+input:focus,select:focus,textarea:focus{
+  outline:none;border-color:var(--gold-bright);
+  box-shadow:0 0 0 1px rgba(255,211,122,.45), 0 0 14px rgba(224,169,70,.25)
+}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.chip{
+  border:1px solid var(--line-bright);background:#050507;color:var(--muted);
+  padding:3px 7px;border-radius:2px;cursor:pointer;font-size:11px;transition:.15s
+}
+.chip:hover{border-color:var(--gold);color:var(--ink)}
+.chip.active{
+  background:var(--gold-dim);border-color:var(--gold-bright);color:var(--gold-bright);
+}
+input[type=range]{padding:0;accent-color:var(--gold-bright);cursor:pointer}
+.val{float:right;color:var(--gold-bright)}
+
+button{
+  font:11.5px var(--mono);cursor:pointer;border-radius:3px;border:1px solid var(--line-bright);
+  background:#060608;color:var(--ink);padding:6px 10px;text-transform:uppercase;letter-spacing:.04em;
+  transition:.15s;display:inline-flex;align-items:center;justify-content:center;gap:6px
+}
+button:hover{
+  border-color:var(--gold-bright);color:var(--gold-bright);
+  box-shadow:0 0 14px rgba(224,169,70,.28)
+}
+button.primary{
+  background:var(--gold);color:#060503;border-color:var(--gold-bright);font-weight:700;
+  box-shadow:0 0 18px rgba(224,169,70,.38), 0 0 8px rgba(255,211,122,.24)
+}
+button.primary:hover{
+  background:var(--gold-bright);color:#060503;
+  box-shadow:0 0 26px rgba(255,211,122,.58), 0 0 12px rgba(224,169,70,.42)
+}
+button.small{padding:3px 7px;font-size:11px}
+button:disabled{opacity:.45;cursor:wait}
+.actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+
+.btn-spinner{
+  width:11px;height:11px;border-radius:50%;
+  border:2px solid rgba(255,211,122,.28);border-top-color:var(--gold-bright);
+  animation:spin .7s linear infinite;display:none;flex-shrink:0
+}
+button.loading .btn-spinner{display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.audio-stage{
+  margin-top:6px;padding:6px 8px;border:1px solid var(--line);border-radius:3px;
+  background:#040406;display:none;flex-direction:column;gap:5px;
+  box-shadow:inset 0 0 12px rgba(224,169,70,.05)
+}
+.audio-stage.loaded{display:flex;border-color:rgba(224,169,70,.38)}
+.audio-stage.transcribing{
+  display:flex;border-color:var(--gold-bright);
+  box-shadow:0 0 18px rgba(224,169,70,.3), inset 0 0 12px rgba(224,169,70,.12)
+}
+.audio-meta{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  font-size:10.5px;color:var(--muted)
+}
+.audio-name{
+  color:var(--gold-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:190px
+}
+.audio-eq{
+  display:grid;grid-template-columns:repeat(18,1fr);gap:2px;height:18px;align-items:end;
+  padding:2px 0
+}
+.audio-eq i{
+  display:block;height:28%;background:rgba(224,169,70,.35);border-radius:1px;
+  transition:height .2s ease, background .2s ease
+}
+.audio-stage.loaded .audio-eq i:nth-child(odd){height:55%;background:rgba(224,169,70,.55)}
+.audio-stage.loaded .audio-eq i:nth-child(even){height:35%;background:rgba(224,169,70,.4)}
+.audio-stage.transcribing .audio-eq i{
+  background:var(--gold-bright);
+  animation:eqBounce .65s ease-in-out infinite alternate
+}
+.audio-stage.transcribing .audio-eq i:nth-child(2n){animation-delay:.12s}
+.audio-stage.transcribing .audio-eq i:nth-child(3n){animation-delay:.24s}
+.audio-stage.transcribing .audio-eq i:nth-child(4n){animation-delay:.36s}
+@keyframes eqBounce{
+  0%{height:18%;opacity:.55}
+  100%{height:100%;opacity:1}
+}
+
+.matrix-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:1380px){.matrix-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:680px){.matrix-grid{grid-template-columns:1fr}}
+.matrix-grid .node-card{margin-bottom:0;min-height:192px;display:flex;flex-direction:column}
+.matrix-grid .nc-body{flex:1;display:flex;flex-direction:column;justify-content:space-between;gap:6px}
+
+.hero-num{
+  font-size:25px;font-weight:700;color:var(--gold-bright);letter-spacing:-.02em;line-height:1.15;
+}
+.hero-sub{font-size:11.5px;color:var(--muted);margin-top:3px}
+.math-line{
+  font-size:11px;color:#dfd0af;background:#030304;border:1px solid var(--line);
+  border-radius:2px;padding:4px 6px;margin-top:5px;line-height:1.4;
+}
+.math-line b{color:var(--gold-bright);font-weight:600}
+.kv-list{display:flex;flex-direction:column;gap:4px;margin-top:6px;font-size:11.5px}
+.kv{display:flex;justify-content:space-between;border-bottom:1px dashed var(--line);padding-bottom:2px;gap:8px}
+.kv span:first-child{color:var(--muted)}
+.kv span:last-child{color:var(--ink);font-weight:600;text-align:right}
+
+.pbar{display:grid;grid-template-columns:126px 1fr 42px;gap:6px;align-items:center;margin:2.5px 0;font-size:11px}
+.bar{height:6px;background:#030304;border:1px solid var(--line);overflow:hidden}
+.bar>i{
+  display:block;height:100%;background:var(--gold);
+  transition:width .45s cubic-bezier(.2,.8,.2,1)
+}
+.bar.good>i{background:var(--good)}
+.stack{display:flex;height:7px;border:1px solid var(--line);overflow:hidden;margin-top:4px;background:#030304}
+.stack i{display:block;height:100%;transition:width .45s}
+
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+th{text-align:left;color:var(--muted);font-weight:600;padding:4px 3px;border-bottom:1px solid var(--line);font-size:10.5px;text-transform:uppercase}
+td{padding:4px 3px;border-bottom:1px solid rgba(38,33,24,.75);vertical-align:middle}
+#ranked tbody tr{cursor:pointer;transition:background .15s}
+#ranked tbody tr:hover{background:rgba(224,169,70,.11)}
+#ranked tbody tr.selected-row{
+  background:rgba(224,169,70,.2);outline:1px solid rgba(255,211,122,.55);
+}
+@keyframes rowArrive{
+  from{opacity:0}
+  to{opacity:1}
+}
+#ranked tbody tr.row-anim{
+  animation:rowArrive .22s ease both;
+}
+#workers input,#workers select{padding:3px 4px;font-size:11.5px}
+.scroll{overflow-x:auto;max-height:175px;overflow-y:auto}
+
+.badge{
+  display:inline-block;padding:1px 6px;border-radius:2px;font-size:10.5px;
+  border:1px solid var(--line-bright);background:#050507;color:var(--muted)
+}
+.badge.good{
+  border-color:rgba(66,211,146,.5);color:var(--good);background:rgba(66,211,146,.11);
+}
+.badge.bad{
+  border-color:rgba(242,95,92,.5);color:var(--bad);background:rgba(242,95,92,.12);
+}
+.badge.warn{
+  border-color:rgba(240,178,67,.55);color:var(--warn);background:rgba(240,178,67,.13);
+}
+
+#skillGapList{max-height:155px;overflow-y:auto;padding-right:2px}
+.sg-item{
+  border:1px solid var(--line);background:#030304;border-radius:3px;padding:6px 8px;margin-top:6px;font-size:11.5px;
+}
+.sg-item:first-child{margin-top:0}
+.sg-item b{color:var(--gold-bright)}
+
+.calc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
+@media(max-width:960px){.calc-grid{grid-template-columns:1fr}}
+.calc-box{
+  border:1px solid var(--line);background:#030304;border-radius:3px;padding:7px 9px;font-size:11px;
+}
+.calc-box .ctitle{
+  color:var(--gold-bright);text-transform:uppercase;font-size:10.5px;margin-bottom:4px;
+  letter-spacing:.05em;
+}
+.calc-box code{display:block;color:var(--ink);white-space:pre-wrap;font-size:11px;line-height:1.45}
+
+.bottom-deck{
+  max-width:1580px;margin:10px auto 18px;padding:0 16px;
+  display:grid;grid-template-columns:1.35fr 1fr;gap:10px
+}
+@media(max-width:960px){.bottom-deck{grid-template-columns:1fr}}
+.term-box{
+  background:#020203;border:1px solid var(--line);border-radius:4px;overflow:hidden;
+  display:flex;flex-direction:column;box-shadow:0 0 18px rgba(0,0,0,.9)
+}
+.term-stream{
+  height:142px;overflow-y:auto;padding:8px 10px;font-size:11.5px;display:flex;flex-direction:column;gap:3px;
+  font-family:var(--mono), var(--sans);
+}
+.log-row .ts{color:#777064;margin-right:6px}
+.log-row .mod{color:var(--gold-bright);margin-right:6px;font-weight:600}
+.log-row.ok .mod{color:var(--good)}
+.log-row.err .mod{color:var(--bad)}
+
+.hist-bars{
+  display:flex;align-items:flex-end;gap:3px;height:68px;padding-top:8px;border-bottom:1px solid var(--line)
+}
+.hist-bars i{
+  flex:1;background:var(--gold-dim);border-top:2px solid var(--gold-bright);display:block;
+  transition:height .35s ease;min-height:4px
+}
+.hist-bars i.hi{
+  background:rgba(66,211,146,.24);border-top-color:var(--good);
+}
+
+.err{
+  max-width:1580px;margin:10px auto 0;padding:8px 16px;
+  background:rgba(242,95,92,.14);border:1px solid var(--bad);color:var(--ink);
+  display:none;white-space:pre-wrap
+}
+.toast{
+  position:fixed;right:18px;bottom:18px;background:#070709;border:1px solid var(--gold-bright);
+  color:var(--ink);padding:9px 14px;border-radius:3px;display:none;z-index:60;
+  box-shadow:0 0 24px rgba(224,169,70,.35), 0 8px 28px rgba(0,0,0,.85)
+}
+svg text{font:10.5px var(--mono);fill:var(--muted)}
+details summary{cursor:pointer;color:var(--gold-bright);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+
+@media (prefers-reduced-motion: reduce){
+  .node-card::before,.node-card.node-ping,#ranked tbody tr.row-anim,.audio-stage.transcribing .audio-eq i,.btn-spinner,.pulse-dot,.wire-pulse.firing{
+    animation:none !important
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="pulse-dot"></span>
+    <span><b>LABOR-HUB</b> // ML GRAPH ENGINE (10 TRADES)</span>
+    <span class="pill">NODES <b id="topNodes">09</b></span>
+    <span class="pill">POOL <b id="topPool">10</b></span>
+    <span class="pill">LATENCY <b id="topLat">-- ms</b></span>
+  </div>
+  <div class="topbar-right">
+    <div class="zoom-group" title="Adjust UI Scale">
+      <button type="button" id="zoomOutBtn" aria-label="Zoom out">-</button>
+      <span id="zoomVal">100%</span>
+      <button type="button" id="zoomInBtn" aria-label="Zoom in">+</button>
+      <button type="button" id="zoomResetBtn">Reset</button>
+    </div>
+    <button class="small" id="resetLayoutBtn" type="button" title="Reset all dragged node positions">Reset Layout</button>
+    <span class="pill" id="pipeStatusPill">STATE: <b>STANDBY</b></span>
+    <span class="pill" id="status">CHECKING API…</span>
+  </div>
+</div>
+
+<div class="err" id="err"></div>
+
+<div class="workspace" id="workspace">
+  <svg id="wireSvg" preserveAspectRatio="none">
+    <g id="staticWeb"></g>
+    <g id="activeWeb"></g>
+    <g id="spineBus"></g>
+    <g id="portNodes"></g>
+  </svg>
+  <div class="left-col">
+    <div class="node-card" id="card-ingest">
+      <div class="nc-head"><span>01–02 · INGEST &amp; WHISPER ASR</span><span class="tag" id="asrTag">TEXT INPUT</span></div>
+      <div class="nc-body">
+        <label for="text">SMS / Voice Transcript (Bangla · Banglish · EN)</label>
+        <textarea id="text" placeholder="e.g. basay plumber lagbe, emergency leak"></textarea>
+        <div class="chips" id="presets"></div>
+
+        <label for="audioFile">Voice Audio (.wav / .mp3 / .m4a / .flac)</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="file" id="audioFile" accept=".wav,.mp3,.m4a,.flac,.ogg,.webm" style="font-size:11px;padding:4px">
+          <button class="small" id="transcribeBtn" type="button">
+            <span class="btn-spinner" aria-hidden="true"></span>
+            <span class="btn-label">ASR Run</span>
+          </button>
+        </div>
+
+        <div class="audio-stage" id="audioStage">
+          <div class="audio-meta">
+            <span class="audio-name" id="audioFileName">no audio loaded</span>
+            <span id="audioFileStatus">READY</span>
+          </div>
+          <div class="audio-eq" id="audioEq" aria-hidden="true"></div>
+        </div>
+
+        <div class="row2">
+          <div><label for="area">Dhaka Zone</label><select id="area"></select></div>
+          <div><label for="wage">Wage (BDT)</label><input id="wage" type="number" min="1" value="1400"></div>
+        </div>
+        <div class="row2">
+          <div><label for="lat">Latitude</label><input id="lat" type="number" step="0.001"></div>
+          <div><label for="lon">Longitude</label><input id="lon" type="number" step="0.001"></div>
+        </div>
+        <label for="radius">Haversine Radius <span class="val" id="radiusV"></span></label>
+        <input id="radius" type="range" min="1" max="20" step="0.5" value="8">
+        <label for="topk">Top-K Dispatch <span class="val" id="topkV"></span></label>
+        <input id="topk" type="range" min="1" max="10" step="1" value="3">
+      </div>
+    </div>
+
+    <div class="node-card" id="card-market">
+      <div class="nc-head"><span>04 · MARKET &amp; SEQUENCE HMM</span><span class="tag">HMM OBS</span></div>
+      <div class="nc-body">
+        <div class="chips" id="scenarios"></div>
+        <label for="jobs">Daily Job Volume <span class="val" id="jobsV"></span></label>
+        <input id="jobs" type="range" min="10" max="180" step="1" value="85">
+        <label for="widx">Market Wage Index <span class="val" id="widxV"></span></label>
+        <input id="widx" type="range" min="0.8" max="1.4" step="0.01" value="1.05">
+        <div style="font-size:11px;color:var(--muted);margin-top:6px" id="histNote"></div>
+      </div>
+    </div>
+
+    <div class="node-card" id="card-pool">
+      <div class="nc-head"><span>WORKER POOL</span><span class="tag" id="poolBadge">10 NODES</span></div>
+      <div class="nc-body">
+        <div style="display:flex;gap:5px;margin-bottom:7px">
+          <button class="small" id="genW" type="button">Generate</button>
+          <button class="small" id="addW" type="button">+ Worker</button>
+          <button class="small" id="clearW" type="button">Clear</button>
+        </div>
+        <div class="scroll">
+          <table id="workers">
+            <thead><tr><th>ID</th><th>Trade</th><th>Lat</th><th>Lon</th><th>Done</th><th>Wage</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="actions">
+          <button class="primary" id="matchBtn" type="button" title="Ctrl+Enter">Execute Graph (Dry Run)</button>
+          <button id="castBtn" type="button">Broadcast</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="spine-col" id="spineCol"></div>
+
+  <div class="right-col">
+    <div class="matrix-grid">
+      <div class="node-card" id="card-nb">
+        <div class="nc-head"><span>03 · TRADE-CLASSIFIER // NB + BERT</span><span class="tag" id="nbTag">IDLE</span></div>
+        <div class="nc-body">
+          <div>
+            <div class="hero-num" id="heroTrade">--</div>
+            <div class="hero-sub" id="heroTradeConf">awaiting token vectorization</div>
+            <div class="math-line" id="nbMath"><b>log P(c|x) ∝ log P(c) + Σ w_i·log P(f_i|c)</b> · margin: --</div>
+          </div>
+          <div id="probs"></div>
+          <div id="lowconf"></div>
+        </div>
+      </div>
+
+      <div class="node-card" id="card-hmm">
+        <div class="nc-head"><span>04 · REGIME-INFERENCE // HMM</span><span class="tag" id="hmmTag">IDLE</span></div>
+        <div class="nc-body">
+          <div>
+            <div class="hero-num" style="font-size:20px" id="heroRegime">--</div>
+            <div class="hero-sub" id="heroSurge">surge posterior: --</div>
+            <div class="math-line" id="hmmMath"><b>obs=[jobs, wage_idx]</b> · P(s_t | x_{1:t})</div>
+          </div>
+          <div>
+            <div class="stack" id="regimeStack"></div>
+            <div class="kv-list" id="hmmKv">
+              <div class="kv"><span>History Window</span><span>--</span></div>
+              <div class="kv"><span>Wage Index</span><span>--</span></div>
+              <div class="kv"><span>Wage Verdict</span><span>--</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="node-card" id="card-guard">
+        <div class="nc-head"><span>06 · SCAM GUARDRAIL // LGBM</span><span class="tag" id="guardTag">IDLE</span></div>
+        <div class="nc-body">
+          <div>
+            <div class="hero-num" id="heroLegit">--%</div>
+            <div class="hero-sub" id="heroGuardSub">job legitimacy score</div>
+            <div class="math-line" id="guardMath"><b>legit = LGBM + Heur</b> · risk = 1 - legit</div>
+          </div>
+          <div class="kv-list" id="guardKv">
+            <div class="kv"><span>Guardrail</span><span>--</span></div>
+            <div class="kv"><span>Scam Risk</span><span>--</span></div>
+            <div class="kv"><span>Flags</span><span>--</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="node-card" id="card-geo">
+        <div class="nc-head"><span>05 · HAVERSINE RADAR</span><span class="tag" id="geoTag">KM</span></div>
+        <div class="nc-body" style="align-items:center;justify-content:center">
+          <svg id="map" viewBox="0 0 360 360" style="width:100%;max-width:215px;display:block"></svg>
+          <div class="math-line" id="geoMath" style="width:100%;text-align:center"><b>d = 2R·asin(√(sin²Δφ/2 + cosφ₁cosφ₂sin²Δλ/2))</b></div>
+          <div style="font-size:10.5px;color:var(--muted);text-align:center">
+            <span style="color:var(--good)">●</span> notified · <span style="color:var(--gold)">●</span> in-radius · ○ out · ◆ job
+          </div>
+        </div>
+      </div>
+
+      <div class="node-card" id="card-gbdt" style="grid-column:span 2">
+        <div class="nc-head"><span>07 · DUAL-OBJECTIVE GBDT RANKER (FIT + ACCEPT)</span><span class="tag" id="gbdtTag">RANK MATRIX</span></div>
+        <div class="nc-body">
+          <div class="math-line" id="gbdtMath"><b>score = f_GBDT(fit_prob, accept_prob, dist_km, wage_ratio, trade_match, completion)</b> · click row to inspect</div>
+          <div class="scroll" style="max-height:195px">
+            <table id="ranked">
+              <thead><tr><th>#</th><th>Worker</th><th>Trade / Rel</th><th>Dist</th><th>Wage</th><th>Fit / Accept</th><th>Combined</th><th>Action</th></tr></thead>
+              <tbody><tr><td colspan="8" style="color:var(--muted);padding:22px;text-align:center">Run graph execution to compute dual-objective GBDT scores.</td></tr></tbody>
+            </table>
+          </div>
+          <div id="excluded" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+        </div>
+      </div>
+
+      <div class="node-card" id="card-skill" style="grid-column:span 3">
+        <div class="nc-head"><span>08 · DYNAMIC SKILL-GAP RECOMMENDER // TF-IDF + COSINE</span><span class="tag" id="skillTag">UPSKILLING</span></div>
+        <div class="nc-body">
+          <div class="math-line" id="skillMath"><b>sim(w, t) = (v_w · v_t) / (||v_w||·||v_t||)</b> · gap = top_terms(t) \ terms(w) → <b>+Δscore</b></div>
+          <div id="skillGapList" style="font-size:11.5px;color:var(--muted)">Run graph execution to inspect bridging skills and projected score boosts.</div>
+        </div>
+      </div>
+
+      <div class="node-card" id="card-calc" style="grid-column:span 3">
+        <div class="nc-head"><span>NODE CALCULATION INSPECTOR // LIVE FORMULA &amp; FEATURE TRACE</span><span class="tag" id="calcSelectedTag">WORKER #1</span></div>
+        <div class="nc-body">
+          <div class="calc-grid">
+            <div class="calc-box">
+              <div class="ctitle">Selected Worker Calculation</div>
+              <code id="calcWorkerTrace">Run match to inspect worker score math.</code>
+            </div>
+            <div class="calc-box">
+              <div class="ctitle">Guardrail &amp; Wage Band Math</div>
+              <code id="calcGuardTrace">Run match to inspect legitimacy &amp; wage band math.</code>
+            </div>
+            <div class="calc-box">
+              <div class="ctitle">Classifier &amp; HMM Telemetry</div>
+              <code id="calcModelTrace">Run match to inspect NB posterior &amp; HMM regime math.</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="bottom-deck">
+  <div class="term-box">
+    <div class="nc-head">
+      <span>PS C:\LABOR-HUB\TELEMETRY&gt; LIVE EXECUTION STREAM</span>
+      <button class="small" id="clearLogBtn" type="button">Clear</button>
+    </div>
+    <div class="term-stream" id="logStream"></div>
+  </div>
+
+  <div class="node-card" style="margin-bottom:0">
+    <div class="nc-head"><span>09 · SCORE DISTRIBUTION &amp; TRAINING REPORT</span><span class="tag" id="histPeakTag">LIVE TELEMETRY</span></div>
+    <div class="nc-body">
+      <div class="hist-bars" id="scoreHist"></div>
+      <details style="margin-top:8px">
+        <summary>Inspect Offline Training Metrics (/api/v1/metrics)</summary>
+        <div id="metrics" style="margin-top:8px;max-height:110px;overflow:auto">loading…</div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TRADES = [
+  "plumbing","electrical","masonry","carpentry","painting","general_labor",
+  "appliance_repair","welding_metalwork","cleaning_sanitation","moving_shifting"
+];
+const AREAS = {
+  mirpur:["Mirpur 10",23.806,90.368], dhanmondi:["Dhanmondi",23.746,90.376], uttara:["Uttara",23.875,90.399],
+  gulshan:["Gulshan",23.792,90.414], banani:["Banani",23.794,90.404], mohammadpur:["Mohammadpur",23.762,90.358],
+  motijheel:["Motijheel",23.733,90.417], badda:["Badda",23.780,90.426], farmgate:["Farmgate",23.757,90.389]
+};
+const PRESETS = [
+  ["Banglish plumber","basay plumber lagbe, emergency leak","gulshan"],
+  ["Electracian typo","electracian lagbe switchboard spark, 1500 tk din","mirpur"],
+  ["Bangla plumber","বাসায় প্লাম্বারের কাজ দরকার মিরপুর ১০","mirpur"],
+  ["Bangla carpenter","কাঠমিস্ত্রি দরকার, দরজার কব্জা ভেঙে গেছে","dhanmondi"],
+  ["English electrical","short circuit in main switchboard, need electrician today","uttara"],
+  ["Painting","bashar deyal rong korbo, flat e distemper kaj","banani"],
+  ["Appliance AC/Fridge","fridge thanda hocche na, ac gas refill ar service lagbe","gulshan"],
+  ["Welding grill","janala grill welding korbo ar gate repair lagbe","mohammadpur"],
+  ["Deep cleaning","bashar deep cleaning ar pani tank porishkar","badda"],
+  ["Basa shifting","basa shift korbo packing soho, furniture shifting","motijheel"],
+  ["General helper","truck theke mal namabo, kuli lagbe","mirpur"],
+  ["Scam / fee test","pay advance registration fee now for high salary work","farmgate"]
+];
+const SCENARIOS = {
+  slack:{label:"Slack (monsoon)",jobs:35,idx:0.90},
+  normal:{label:"Normal",jobs:75,idx:1.00},
+  peak:{label:"Peak (festival)",jobs:130,idx:1.22},
+  custom:{label:"Custom",jobs:null,idx:null}
+};
+let scenario = "normal", workers = [], lastJobId = null, lastRes = null, lastMode = null, selectedWorkerId = null;
+let topZ = 2;
+let uiZoom = 100;
+
+function applyUiZoom(nextZoom){
+  uiZoom = Math.min(130, Math.max(80, Math.round(nextZoom)));
+  $("zoomVal").textContent = `${uiZoom}%`;
+  document.documentElement.style.zoom = `${uiZoom}%`;
+  scheduleSpineRebuild();
+}
+$("zoomOutBtn").onclick = () => applyUiZoom(uiZoom - 10);
+$("zoomInBtn").onclick = () => applyUiZoom(uiZoom + 10);
+$("zoomResetBtn").onclick = () => applyUiZoom(100);
+
+function initDraggableCards(){
+  const interactiveSelector = "input,textarea,select,button,a,label,.chip,table,#map";
+  document.querySelectorAll(".node-card").forEach(card => {
+    card.style.setProperty("--dx", "0px");
+    card.style.setProperty("--dy", "0px");
+    card.style.setProperty("--z", "1");
+
+    card.addEventListener("pointerdown", e => {
+      if(e.button !== 0 && e.pointerType === "mouse") return;
+      if(e.target.closest(interactiveSelector)) return;
+
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const baseDx = parseFloat(card.style.getPropertyValue("--dx")) || 0;
+      const baseDy = parseFloat(card.style.getPropertyValue("--dy")) || 0;
+      let moved = false;
+
+      topZ += 1;
+      card.style.setProperty("--z", String(topZ));
+      card.classList.add("dragging");
+      card.setPointerCapture(e.pointerId);
+
+      const onMove = ev => {
+        const nextDx = Math.round(baseDx + (ev.clientX - startX));
+        const nextDy = Math.round(baseDy + (ev.clientY - startY));
+        card.classList.toggle("moved", nextDx !== 0 || nextDy !== 0);
+        card.style.setProperty("--dx", `${nextDx}px`);
+        card.style.setProperty("--dy", `${nextDy}px`);
+        if(!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 3){
+          moved = true;
+        }
+        scheduleSpineRebuild();
+      };
+
+      const onUp = ev => {
+        card.classList.remove("dragging");
+        if(card.hasPointerCapture(ev.pointerId)) card.releasePointerCapture(ev.pointerId);
+        card.removeEventListener("pointermove", onMove);
+        card.removeEventListener("pointerup", onUp);
+        card.removeEventListener("pointercancel", onUp);
+        if(moved){
+          const title = card.querySelector(".nc-head span")?.textContent || card.id;
+          logMsg("CANVAS", `Moved node "${title.trim()}"`);
+        }
+        scheduleSpineRebuild();
+      };
+
+      card.addEventListener("pointermove", onMove);
+      card.addEventListener("pointerup", onUp);
+      card.addEventListener("pointercancel", onUp);
+    });
+  });
+}
+
+$("resetLayoutBtn").onclick = () => {
+  topZ = 2;
+  document.querySelectorAll(".node-card").forEach(card => {
+    card.classList.remove("moved");
+    card.style.setProperty("--dx", "0px");
+    card.style.setProperty("--dy", "0px");
+    card.style.setProperty("--z", "1");
+  });
+  scheduleSpineRebuild();
+  logMsg("CANVAS", "Reset all node positions to default grid", "ok");
+  toast("Node layout reset");
+};
+
+$("audioEq").innerHTML = Array.from({length:18}, () => "<i></i>").join("");
+
+function formatBytes(bytes){
+  if(!Number.isFinite(bytes) || bytes <= 0) return "";
+  if(bytes < 1024) return `${bytes} B`;
+  if(bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function setAudioState(mode, file = null, statusText = ""){
+  const stage = $("audioStage");
+  const btn = $("transcribeBtn");
+  const label = btn ? btn.querySelector(".btn-label") : null;
+  if(!stage || !btn) return;
+
+  stage.classList.remove("loaded", "transcribing");
+  btn.classList.remove("loading");
+
+  if(file){
+    const sz = formatBytes(file.size);
+    $("audioFileName").textContent = sz ? `${file.name} (${sz})` : file.name;
+  }
+
+  if(mode === "idle"){
+    if(!file) $("audioFileName").textContent = "no audio loaded";
+    $("audioFileStatus").textContent = statusText || "READY";
+    $("asrTag").textContent = "TEXT INPUT";
+    btn.disabled = false;
+    if(label) label.textContent = "ASR Run";
+    return;
+  }
+
+  if(mode === "loaded"){
+    stage.classList.add("loaded");
+    $("audioFileStatus").textContent = statusText || "LOADED · READY";
+    $("asrTag").textContent = "AUDIO READY";
+    btn.disabled = false;
+    if(label) label.textContent = "ASR Run";
+    return;
+  }
+
+  if(mode === "transcribing"){
+    stage.classList.add("transcribing");
+    $("audioFileStatus").textContent = statusText || "WHISPER DECODING…";
+    $("asrTag").textContent = "ASR RUNNING";
+    btn.disabled = true;
+    btn.classList.add("loading");
+    if(label) label.textContent = "Transcribing…";
+  }
+}
+
+$("audioFile").addEventListener("change", () => {
+  const f = $("audioFile").files && $("audioFile").files[0];
+  if(!f){
+    setAudioState("idle", null, "READY");
+    return;
+  }
+  setAudioState("loaded", f, "LOADED · READY");
+  setStageCard("card-ingest", "done");
+  triggerWireBurst(650);
+  logMsg("AUDIO", `Loaded ${f.name} (${formatBytes(f.size) || "file"}) — ready for ASR Run`, "ok");
+  scheduleSpineRebuild();
+});
+
+$("text").addEventListener("input", () => {
+  document.querySelectorAll("#presets .chip").forEach(x => x.classList.remove("active"));
+  $("asrTag").textContent = "TEXT INPUT";
+});
+
+function buildSpine(){
+  const ws = $("workspace"), svg = $("wireSvg");
+  const staticG = $("staticWeb"), activeG = $("activeWeb"), busG = $("spineBus"), portG = $("portNodes");
+  if(!ws || !svg || !staticG || !activeG || !busG || !portG) return;
+
+  const wsRect = ws.getBoundingClientRect();
+  const leftIds = ["card-ingest", "card-market", "card-pool"];
+  const rightIds = ["card-nb", "card-hmm", "card-guard", "card-geo", "card-gbdt", "card-skill", "card-calc"];
+  const allCards = [...leftIds, ...rightIds].map(id => $(id)).filter(Boolean);
+
+  let minX = 0, maxX = Math.max(320, Math.round(ws.scrollWidth || wsRect.width || 1200));
+  let minY = 0, maxY = Math.max(300, Math.round(ws.scrollHeight || wsRect.height || 800));
+
+  allCards.forEach(el => {
+    const r = el.getBoundingClientRect();
+    const relL = Math.round(r.left - wsRect.left) - 24;
+    const relR = Math.round(r.right - wsRect.left) + 24;
+    const relT = Math.round(r.top - wsRect.top) - 24;
+    const relB = Math.round(r.bottom - wsRect.top) + 24;
+    if(relL < minX) minX = relL;
+    if(relR > maxX) maxX = relR;
+    if(relT < minY) minY = relT;
+    if(relB > maxY) maxY = relB;
+  });
+
+  const vbW = Math.max(320, maxX - minX);
+  const vbH = Math.max(300, maxY - minY);
+  svg.setAttribute("viewBox", `${minX} ${minY} ${vbW} ${vbH}`);
+  svg.style.left = `${minX}px`;
+  svg.style.top = `${minY}px`;
+  svg.style.width = `${vbW}px`;
+  svg.style.height = `${vbH}px`;
+
+  const leftAnchors = leftIds.map(id => $(id)).filter(Boolean).map(el => {
+    const r = el.getBoundingClientRect();
+    return {
+      x: Math.round(r.right - wsRect.left),
+      y: Math.round(r.top + r.height * 0.5 - wsRect.top)
+    };
+  });
+
+  const rightAnchors = rightIds.map(id => $(id)).filter(Boolean).map(el => {
+    const r = el.getBoundingClientRect();
+    return {
+      x: Math.round(r.left - wsRect.left),
+      y: Math.round(r.top + r.height * 0.5 - wsRect.top)
+    };
+  });
+
+  if(!leftAnchors.length || !rightAnchors.length) return;
+
+  const avgLeftX = leftAnchors.reduce((a,b)=>a+b.x,0) / leftAnchors.length;
+  const avgRightX = rightAnchors.reduce((a,b)=>a+b.x,0) / rightAnchors.length;
+  const cx = Math.round((avgLeftX + avgRightX) * 0.5);
+
+  let sHtml = "", aHtml = "", bHtml = "", pHtml = "";
+  leftAnchors.forEach((L, i) => {
+    rightAnchors.forEach((R, j) => {
+      const dx = R.x - L.x;
+      let d;
+      if(dx >= 40){
+        const span = Math.max(36, dx * 0.36);
+        const c1x = Math.round(L.x + span);
+        const c2x = Math.round(R.x - span);
+        d = `M ${L.x} ${L.y} C ${c1x} ${L.y}, ${c2x} ${R.y}, ${R.x} ${R.y}`;
+      } else {
+        const midY = Math.round((L.y + R.y) * 0.5);
+        const outX = Math.max(L.x, R.x) + 48;
+        d = `M ${L.x} ${L.y} C ${outX} ${L.y}, ${outX} ${midY}, ${cx} ${midY} S ${Math.min(L.x, R.x) - 48} ${R.y}, ${R.x} ${R.y}`;
+      }
+      sHtml += `<path class="wire-base" d="${d}"/>`;
+      aHtml += `<path class="wire-pulse" id="wp-${i}-${j}" d="${d}"/>`;
+    });
+  });
+
+  const allY = [...leftAnchors.map(a=>a.y), ...rightAnchors.map(a=>a.y)];
+  const topBus = Math.min(...allY);
+  const botBus = Math.max(...allY);
+  bHtml += `<line x1="${cx}" y1="${topBus}" x2="${cx}" y2="${botBus}" stroke="#3a2f1d" stroke-width="1.6"/>`;
+  for(let y = topBus; y <= botBus; y += 18){
+    bHtml += `<rect x="${cx - 5}" y="${y - 2}" width="10" height="4" class="bus-node" id="bus-${y}"/>`;
+  }
+
+  leftAnchors.forEach(a => { pHtml += `<circle cx="${a.x}" cy="${a.y}" r="3.8" class="port-dot"/>`; });
+  rightAnchors.forEach(a => { pHtml += `<circle cx="${a.x}" cy="${a.y}" r="3.8" class="port-dot"/>`; });
+
+  staticG.innerHTML = sHtml;
+  activeG.innerHTML = aHtml;
+  busG.innerHTML = bHtml;
+  portG.innerHTML = pHtml;
+}
+
+let spineRaf = null;
+function scheduleSpineRebuild(){
+  if(spineRaf !== null) return;
+  spineRaf = requestAnimationFrame(() => {
+    spineRaf = null;
+    buildSpine();
+  });
+}
+initDraggableCards();
+buildSpine();
+window.addEventListener("resize", scheduleSpineRebuild);
+if(typeof ResizeObserver !== "undefined"){
+  const ro = new ResizeObserver(scheduleSpineRebuild);
+  document.querySelectorAll(".workspace, .left-col, .right-col").forEach(el => ro.observe(el));
+}
+
+function triggerWireBurst(durationMs = 1400){
+  buildSpine();
+  const pulses = document.querySelectorAll(".wire-pulse");
+  const buses = document.querySelectorAll(".bus-node");
+  const ports = document.querySelectorAll(".port-dot");
+  pulses.forEach((p, idx) => {
+    p.style.animationDelay = `${(idx % 6) * 0.09}s`;
+    p.classList.add("firing");
+  });
+  buses.forEach((b, idx) => {
+    setTimeout(() => b.classList.add("lit"), (idx % 12) * 35);
+  });
+  ports.forEach(pt => pt.classList.add("lit"));
+  setTimeout(() => {
+    pulses.forEach(p => p.classList.remove("firing"));
+    buses.forEach(b => b.classList.remove("lit"));
+    ports.forEach(pt => pt.classList.remove("lit"));
+  }, durationMs);
+}
+
+function animateValue(el, endVal, {prefix="", suffix="", decimals=0, duration=480} = {}){
+  if(!el) return;
+  const startVal = 0;
+  const t0 = performance.now();
+  function frame(now){
+    const p = Math.min(1, (now - t0) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+    const cur = startVal + (endVal - startVal) * eased;
+    el.textContent = prefix + cur.toFixed(decimals) + suffix;
+    if(p < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+function setStageCard(cardId, state){
+  const el = $(cardId);
+  if(!el) return;
+  el.classList.remove("active-stage","done-stage","node-ping");
+  if(state === "active"){
+    el.classList.add("active-stage","node-ping");
+  } else if(state === "done"){
+    el.classList.add("done-stage","node-ping");
+  }
+  setTimeout(() => el.classList.remove("node-ping"), 600);
+}
+
+function logMsg(mod, msg, cls=""){
+  const stream = $("logStream");
+  const ts = new Date().toTimeString().slice(0,8);
+  const div = document.createElement("div");
+  div.className = "log-row " + cls;
+  div.innerHTML = `<span class="ts">${ts}</span><span class="mod">[${esc(mod)}]</span><span>${esc(msg)}</span>`;
+  stream.appendChild(div);
+  stream.scrollTop = stream.scrollHeight;
+}
+$("clearLogBtn").onclick = () => { $("logStream").innerHTML = ""; };
+
+$("area").innerHTML = Object.entries(AREAS).map(([k,v])=>`<option value="${k}">${v[0]}</option>`).join("");
+$("presets").innerHTML = PRESETS.map((p,i)=>`<span class="chip" data-i="${i}">${esc(p[0])}</span>`).join("");
+$("scenarios").innerHTML = Object.entries(SCENARIOS).map(([k,v])=>`<span class="chip" data-k="${k}">${v.label}</span>`).join("");
+
+function setArea(k){ $("area").value=k; $("lat").value=AREAS[k][1]; $("lon").value=AREAS[k][2]; }
+function setScenario(k){
+  scenario=k;
+  document.querySelectorAll("#scenarios .chip").forEach(c=>c.classList.toggle("active",c.dataset.k===k));
+  if(k!=="custom"){ $("jobs").value=SCENARIOS[k].jobs; $("widx").value=SCENARIOS[k].idx; }
+  sliderLabels();
+  $("histNote").textContent = k==="custom"
+    ? "Single-day observation sent (no 30-day transition window)."
+    : "30-day synthetic window generated around scenario parameters.";
+}
+function sliderLabels(){
+  $("radiusV").textContent=$("radius").value+" km";
+  $("topkV").textContent=$("topk").value;
+  $("jobsV").textContent=$("jobs").value;
+  $("widxV").textContent=(+$("widx").value).toFixed(2);
+}
+document.querySelectorAll("#presets .chip").forEach(c=>c.onclick=()=>{
+  const p=PRESETS[c.dataset.i]; $("text").value=p[1]; setArea(p[2]); genWorkers();
+  document.querySelectorAll("#presets .chip").forEach(x=>x.classList.toggle("active",x===c));
+  $("asrTag").textContent = "PRESET TEXT";
+  logMsg("PRESET", `Loaded "${p[0]}" @ ${AREAS[p[2]][0]}`);
+});
+document.querySelectorAll("#scenarios .chip").forEach(c=>c.onclick=()=>setScenario(c.dataset.k));
+$("area").onchange=()=>setArea($("area").value);
+["jobs","widx"].forEach(id=>$(id).oninput=()=>{ if(scenario!=="custom") setScenario("custom"); sliderLabels(); });
+["radius","topk"].forEach(id=>$(id).oninput=sliderLabels);
+
+const NAMES=["Rahim","Karim","Jamal","Sumon","Hasan","Babul","Mizan","Rubel","Shahin","Nasir","Faruk","Alamin","Tarek","Selim"];
+const rnd=(a,b)=>a+Math.random()*(b-a);
+function offset(lat,lon,km){
+  const ang=rnd(0,2*Math.PI);
+  return [lat+(km*Math.cos(ang))/110.574, lon+(km*Math.sin(ang))/(111.32*Math.cos(lat*Math.PI/180))];
+}
+function genWorkers(){
+  const lat=+$("lat").value, lon=+$("lon").value, names=[...NAMES].sort(()=>Math.random()-.5);
+  workers=[];
+  for(let i=0;i<10;i++){
+    const trade = TRADES[i % TRADES.length];
+    const [la,lo]=offset(lat,lon,rnd(0.4,13));
+    workers.push({
+      id:`${names[i].toLowerCase()}_${trade.slice(0,4)}`,
+      trade, lat:+la.toFixed(4), lon:+lo.toFixed(4),
+      done:+rnd(0.55,0.99).toFixed(2), wage:Math.round(rnd(800,1800)/50)*50
+    });
+  }
+  renderWorkers();
+  logMsg("POOL", `Generated ${workers.length} candidate workers across 10 trades around (${lat.toFixed(3)}, ${lon.toFixed(3)})`);
+}
+function renderWorkers(){
+  $("topPool").textContent = String(workers.length).padStart(2,"0");
+  $("poolBadge").textContent = `${workers.length} NODES`;
+  $("workers").querySelector("tbody").innerHTML = workers.map((w,i)=>`<tr>
+    <td><input data-i="${i}" data-f="id" value="${esc(w.id)}" style="min-width:92px"></td>
+    <td><select data-i="${i}" data-f="trade">${TRADES.map(t=>`<option ${t===w.trade?"selected":""}>${t}</option>`).join("")}</select></td>
+    <td><input data-i="${i}" data-f="lat" type="number" step="0.0001" value="${w.lat}" style="width:74px"></td>
+    <td><input data-i="${i}" data-f="lon" type="number" step="0.0001" value="${w.lon}" style="width:74px"></td>
+    <td><input data-i="${i}" data-f="done" type="number" step="0.01" min="0" max="1" value="${w.done}" style="width:52px"></td>
+    <td><input data-i="${i}" data-f="wage" type="number" step="50" min="1" value="${w.wage}" style="width:60px"></td>
+    <td><button class="small" data-del="${i}">✕</button></td></tr>`).join("")
+    || `<tr><td colspan="7" style="color:var(--muted);padding:10px">Empty pool — generate or add workers.</td></tr>`;
+  scheduleSpineRebuild();
+}
+$("workers").addEventListener("change",e=>{
+  const t=e.target, i=t.dataset.i; if(i===undefined) return;
+  const f=t.dataset.f; workers[i][f]= (f==="id"||f==="trade") ? t.value : parseFloat(t.value);
+});
+$("workers").addEventListener("click",e=>{
+  if(e.target.dataset.del!==undefined){ workers.splice(+e.target.dataset.del,1); renderWorkers(); }
+});
+$("genW").onclick=genWorkers;
+$("clearW").onclick=()=>{workers=[];renderWorkers();logMsg("POOL","Cleared candidate pool");};
+$("addW").onclick=()=>{
+  const [la,lo]=offset(+$("lat").value,+$("lon").value,rnd(0.5,6));
+  workers.push({id:`worker_${workers.length+1}`,trade:"plumbing",lat:+la.toFixed(4),lon:+lo.toFixed(4),done:0.9,wage:1200});
+  renderWorkers();
+};
+
+function makeHistory(){
+  if(scenario==="custom") return null;
+  const s=SCENARIOS[scenario], h=[];
+  for(let i=0;i<30;i++){
+    const g=()=>(Math.random()+Math.random()+Math.random()-1.5)*2;
+    h.push([Math.max(5,+(s.jobs+g()*s.jobs*0.1).toFixed(1)), +(s.idx+g()*0.04).toFixed(3)]);
+  }
+  return h;
+}
+function payload(jobId){
+  return {
+    job_id:jobId, raw_text:$("text").value, lat:+$("lat").value, lon:+$("lon").value,
+    offered_wage:+$("wage").value, recent_daily_jobs:+$("jobs").value, recent_wage_index:+$("widx").value,
+    history:makeHistory(), max_radius_km:+$("radius").value, top_k:+$("topk").value,
+    candidates:workers.map(w=>({
+      worker_id:w.id, primary_trade:w.trade, lat:w.lat, lon:w.lon,
+      completion_rate:w.done, expected_daily_wage:w.wage
+    }))
+  };
+}
+function showErr(msg){
+  const e=$("err"); e.textContent=msg; e.style.display=msg?"block":"none";
+  if(msg) logMsg("ERROR", msg.split("\n")[0], "err");
+}
+function toast(msg,ok=true){
+  const t=$("toast"); t.textContent=msg; t.style.borderColor=ok?"var(--gold-bright)":"var(--bad)";
+  t.style.display="block"; clearTimeout(toast.t); toast.t=setTimeout(()=>t.style.display="none",4200);
+}
+function errText(d){
+  if(!d) return "Unknown error";
+  if(typeof d.detail==="string") return d.detail;
+  if(Array.isArray(d.detail)) return d.detail.map(x=>`${(x.loc||[]).slice(1).join(".")}: ${x.msg}`).join("\n");
+  return JSON.stringify(d);
+}
+
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+async function run(mode, {silent=false} = {}){
+  showErr("");
+  if(!$("text").value.trim()){ showErr("Please enter or transcribe a job description first."); return; }
+  const btns=[$("matchBtn"),$("castBtn")]; btns.forEach(b=>b.disabled=true);
+
+  $("pipeStatusPill").innerHTML = `STATE: <b>EXECUTING</b>`;
+  setStageCard("card-ingest","active");
+  if(!silent) triggerWireBurst(1650);
+  logMsg("GRAPH", `Starting ${mode === "broadcast" ? "BROADCAST" : "DRY-RUN"} graph execution…`);
+
+  const t0=performance.now();
+  try{
+    const jobId = mode==="broadcast" ? "job_"+Date.now().toString(36) : null;
+    const url = mode==="broadcast" ? "/api/v1/broadcast_job" : "/api/v1/match";
+    const r = await fetch(url,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload(jobId))
+    });
+    const d = await r.json().catch(()=>null);
+    if(!r.ok){
+      $("pipeStatusPill").innerHTML = `STATE: <b>ERROR ${r.status}</b>`;
+      setStageCard("card-ingest","");
+      showErr(`Request failed (${r.status})\n`+errText(d));
+      return;
+    }
+    d.roundtrip_ms = Math.round(performance.now()-t0);
+    lastRes=d; lastMode=mode; lastJobId = mode==="broadcast" ? d.job_id : null;
+
+    setStageCard("card-ingest","done");
+    setStageCard("card-nb","active");
+    logMsg("NB", `Trade -> ${d.predicted_trade} (${pct(d.trade_confidence)})`, "ok");
+    if(!silent) await wait(120);
+
+    setStageCard("card-nb","done");
+    setStageCard("card-hmm","active");
+    logMsg("HMM", `Regime -> ${d.market_regime} (surge=${pct(d.market_surge_probability)})`);
+    if(!silent) await wait(120);
+
+    setStageCard("card-hmm","done");
+    setStageCard("card-guard","active");
+    logMsg("GUARD", `Legitimacy=${pct(d.guardrail.legitimacy_score)} (${d.guardrail.verdict})`, d.guardrail.verdict === "legitimate" ? "ok" : "err");
+    if(!silent) await wait(120);
+
+    setStageCard("card-guard","done");
+    setStageCard("card-geo","active");
+    setStageCard("card-gbdt","active");
+    setStageCard("card-skill","active");
+    setStageCard("card-calc","active");
+    logMsg("GBDT+KNN", `Ranked ${d.in_radius_count} workers, ${d.skill_gap_recommendations.length} skill-gap tips (${d.latency_ms}ms)`, "ok");
+
+    render(d);
+    if(!silent) await wait(220);
+    ["card-geo","card-gbdt","card-skill","card-calc"].forEach(id => setStageCard(id,"done"));
+    $("pipeStatusPill").innerHTML = `STATE: <b>LOCKED (${d.latency_ms}ms)</b>`;
+    $("topLat").textContent = `${d.latency_ms} ms`;
+  }catch(e){
+    $("pipeStatusPill").innerHTML = `STATE: <b>OFFLINE</b>`;
+    showErr("Cannot reach the API: "+e.message);
+  }
+  finally{ btns.forEach(b=>b.disabled=false); }
+}
+$("matchBtn").onclick=()=>run("match");
+$("castBtn").onclick=()=>run("broadcast");
+document.addEventListener("keydown",e=>{ if(e.ctrlKey&&e.key==="Enter") run("match"); });
+
+$("transcribeBtn").onclick = async () => {
+  const fileInput = $("audioFile");
+  if (!fileInput.files.length) {
+    toast("Select an audio file first.", false);
+    return;
+  }
+  const file = fileInput.files[0];
+  const formData = new FormData();
+  formData.append("file", file);
+
+  setAudioState("transcribing", file, "WHISPER DECODING…");
+  $("pipeStatusPill").innerHTML = `STATE: <b>ASR STREAMING</b>`;
+  setStageCard("card-ingest","active");
+  triggerWireBurst(2600);
+  logMsg("WHISPER", `Streaming ${file.name} -> /api/v1/transcribe-audio (beam=3)`);
+
+  try {
+    const res = await fetch("/api/v1/transcribe-audio", { method: "POST", body: formData });
+    const data = await res.json().catch(()=>null);
+    if (!res.ok) {
+      toast("ASR failed: " + errText(data), false);
+      logMsg("WHISPER", errText(data), "err");
+      setAudioState("loaded", file, "ASR ERROR");
+      setStageCard("card-ingest","");
+      $("pipeStatusPill").innerHTML = `STATE: <b>ASR ERROR</b>`;
+      return;
+    }
+    document.querySelectorAll("#presets .chip").forEach(x => x.classList.remove("active"));
+    $("text").value = data.transcript;
+    $("text").classList.add("asr-flash");
+    setTimeout(() => $("text").classList.remove("asr-flash"), 900);
+    setAudioState("loaded", file, "DECODED · DONE");
+    $("asrTag").textContent = "ASR TRANSCRIPT";
+    toast(`Transcribed (${data.asr_model || "whisper"}): ${data.filename}`);
+    logMsg("WHISPER", `Decoded [${data.asr_model || "whisper"}]: "${data.transcript}"`, "ok");
+    run("match");
+  } catch (err) {
+    toast("ASR error: " + err.message, false);
+    logMsg("WHISPER", err.message, "err");
+    setAudioState("loaded", file, "ASR FAILED");
+    setStageCard("card-ingest","");
+    $("pipeStatusPill").innerHTML = `STATE: <b>ASR FAILED</b>`;
+  }
+};
+
+const pct=x=>(x*100).toFixed(0)+"%";
+const REG_COL=["#5b9bff","#7d7970","#e0a946"];
+
+function renderCalcInspector(d, workerRow){
+  const g = d.guardrail || {};
+  const wAdv = d.wage_advice || {};
+  const band = Array.isArray(wAdv.fair_band) ? wAdv.fair_band : [0, 0];
+  const offered = +$("wage").value || 0;
+  const radiusKm = +$("radius").value || 8;
+  const probsSorted = Object.values(d.trade_probabilities || {}).sort((a,b) => b - a);
+  const top1 = probsSorted[0] ?? d.trade_confidence ?? 0;
+  const top2 = probsSorted[1] ?? 0;
+  const margin = top1 - top2;
+
+  $("nbMath").innerHTML = `<b>log P(c|x) ∝ log P(c) + Σ w_i·log P(f_i|c)</b> · Δp=${(margin*100).toFixed(1)}%`;
+  $("hmmMath").innerHTML = `<b>obs=[${+$("jobs").value}, ${(+$("widx").value).toFixed(2)}]</b> · P(Peak)=${pct(d.market_surge_probability || 0)}`;
+  $("guardMath").innerHTML = `<b>legit = LGBM + Heur</b> · wage=${offered} vs [${band[0]}–${band[1]}]`;
+  $("geoMath").innerHTML = `<b>d ≤ ${radiusKm} km</b> · in=${d.in_radius_count} / out=${(d.excluded_workers||[]).length}`;
+
+  if(workerRow){
+    $("calcSelectedTag").textContent = `#${workerRow.rank} ${workerRow.worker_id.toUpperCase()}`;
+    const wageDiff = workerRow.expected_daily_wage - offered;
+    const gapRec = (d.skill_gap_recommendations || []).find(s => s.worker_id === workerRow.worker_id);
+    const boostStr = gapRec ? ` (+${gapRec.projected_score_boost.toFixed(3)} est. boost)` : "";
+    $("calcWorkerTrace").textContent =
+`worker      : ${workerRow.worker_id} (rank #${workerRow.rank})
+trade_match : ${workerRow.trade_match} (${workerRow.primary_trade} vs ${d.predicted_trade})
+distance_km : ${workerRow.distance_km} km (rel=${workerRow.reliability_state}, done=${pct(workerRow.completion_rate)})
+wage_delta  : exp=${workerRow.expected_daily_wage} - off=${offered} = ${wageDiff >= 0 ? "+" : "-"}${Math.abs(wageDiff)} BDT
+fit_score   : ${workerRow.fit_score.toFixed(4)}
+accept_prob : ${workerRow.acceptance_probability.toFixed(4)}
+compat_score: ${workerRow.compatibility_score.toFixed(4)}${boostStr}`;
+  } else {
+    $("calcSelectedTag").textContent = "NO WORKER IN RADIUS";
+    $("calcWorkerTrace").textContent = `No candidates within ${radiusKm} km of (${+$("lat").value}, ${+$("lon").value}).`;
+  }
+
+  $("calcGuardTrace").textContent =
+`legitimacy  : ${((g.legitimacy_score||0)*100).toFixed(2)}%
+scam_risk   : ${((g.scam_risk||0)*100).toFixed(2)}% (1 - legitimacy)
+verdict     : ${g.verdict || "--"} | flags: ${(g.flags && g.flags.length) ? g.flags.join(", ") : "none"}
+offered_wage: ${offered} BDT (${wAdv.verdict || "--"})
+fair_band   : [${band[0]}, ${band[1]}] BDT`;
+
+  $("calcModelTrace").textContent =
+`predicted   : ${d.predicted_trade} (conf=${((d.trade_confidence||0)*100).toFixed(1)}%, Δp=${(margin*100).toFixed(1)}%)
+low_conf    : ${Boolean(d.low_confidence)} (threshold < 50.0%)
+hmm_regime  : ${d.market_regime} (${d.history_days_used}d window)
+surge_prob  : ${((d.market_surge_probability||0)*100).toFixed(1)}%
+latency     : ${d.latency_ms} ms (api) / ${d.roundtrip_ms || d.latency_ms} ms (rtt)`;
+}
+
+function render(d){
+  $("nbTag").textContent = pct(d.trade_confidence) + " CONF";
+  $("heroTrade").textContent = d.predicted_trade.toUpperCase();
+  animateValue($("heroTradeConf"), d.trade_confidence * 100, {prefix:"posterior confidence: ", suffix:"%", decimals:1});
+  $("probs").innerHTML = Object.entries(d.trade_probabilities).map(([t,p])=>
+    `<div class="pbar"><span>${esc(t)}</span><div class="bar ${t===d.predicted_trade?"good":""}"><i style="width:${p*100}%"></i></div><span>${pct(p)}</span></div>`).join("");
+  $("lowconf").innerHTML = d.low_confidence
+    ? `<span class="badge warn">LOW CONFIDENCE — CLARIFY INTENT</span>` : "";
+
+  const regs=Object.entries(d.regime_probabilities);
+  $("hmmTag").textContent = `${d.history_days_used}D WINDOW`;
+  $("heroRegime").textContent = d.market_regime.toUpperCase();
+  animateValue($("heroSurge"), d.market_surge_probability * 100, {prefix:"surge posterior: ", suffix:"%", decimals:1});
+  $("regimeStack").innerHTML = regs.map(([n,p],i)=>`<i title="${esc(n)} ${pct(p)}" style="width:${p*100}%;background:${REG_COL[i]}"></i>`).join("");
+  $("hmmKv").innerHTML = `
+    <div class="kv"><span>History Window</span><span>${d.history_days_used} days</span></div>
+    <div class="kv"><span>Wage Index</span><span>${d.market_wage_index}x</span></div>
+    <div class="kv"><span>Wage Verdict</span><span>${esc(d.wage_advice.verdict)}</span></div>`;
+
+  const g = d.guardrail;
+  const gCls = g.verdict === "legitimate" ? "good" : g.verdict === "caution" ? "warn" : "bad";
+  $("guardTag").textContent = g.verdict.toUpperCase();
+  animateValue($("heroLegit"), g.legitimacy_score * 100, {suffix:"%", decimals:1});
+  $("heroGuardSub").textContent = `${d.notified_workers_count} top-k notified · band ${d.wage_advice.fair_band[0]}–${d.wage_advice.fair_band[1]}`;
+  $("guardKv").innerHTML = `
+    <div class="kv"><span>Guardrail</span><span class="badge ${gCls}">${esc(g.verdict)}</span></div>
+    <div class="kv"><span>Scam Risk</span><span>${pct(g.scam_risk)}</span></div>
+    <div class="kv"><span>Flags</span><span>${g.flags.length ? esc(g.flags.join(", ")) : "none"}</span></div>`;
+
+  $("geoTag").textContent = `${$("radius").value} KM`;
+  drawMap(d);
+
+  const canAccept = lastMode==="broadcast";
+  if(d.ranked_workers.length){
+    if(!selectedWorkerId || !d.ranked_workers.some(x => x.worker_id === selectedWorkerId)){
+      selectedWorkerId = d.ranked_workers[0].worker_id;
+    }
+  } else {
+    selectedWorkerId = null;
+  }
+
+  $("gbdtTag").textContent = `${d.ranked_workers.length} DUAL-SCORED`;
+  $("ranked").querySelector("tbody").innerHTML = d.ranked_workers.map((r,idx)=>`<tr data-wid="${esc(r.worker_id)}" class="row-anim ${r.worker_id===selectedWorkerId?"selected-row":""}" style="animation-delay:${Math.min(idx*35,350)}ms">
+    <td>${String(r.rank).padStart(2,"0")}</td>
+    <td><b>${esc(r.worker_id)}</b></td>
+    <td>${esc(r.primary_trade)} <span class="badge">${esc(r.reliability_state)}</span> ${r.trade_match?'<span class="badge good">MATCH</span>':''}</td>
+    <td>${r.distance_km} km</td>
+    <td>${r.expected_daily_wage}</td>
+    <td>Fit ${pct(r.fit_score)} · Acc ${pct(r.acceptance_probability)}</td>
+    <td style="min-width:105px"><div class="bar ${r.notified?"good":""}"><i style="width:${r.compatibility_score*100}%"></i></div>${r.compatibility_score.toFixed(4)}</td>
+    <td>${r.notified ? (canAccept ? `<button class="small primary" data-acc="${esc(r.worker_id)}">Accept</button>` : '<span class="badge good">TOP-K</span>') : ""}</td></tr>`).join("")
+    || `<tr><td colspan="8" style="color:var(--muted);padding:16px;text-align:center">No workers inside ${$("radius").value} km radius.</td></tr>`;
+  $("excluded").textContent = d.excluded_workers.length
+    ? "EXCLUDED (> RADIUS): " + d.excluded_workers.map(e=>`${e.worker_id} (${e.distance_km}km)`).join(" · ") : "ALL POOL CANDIDATES WITHIN RADIUS";
+
+  $("skillTag").textContent = `${d.skill_gap_recommendations.length} GAPS`;
+  $("skillGapList").innerHTML = d.skill_gap_recommendations.length
+    ? d.skill_gap_recommendations.map(s => `<div class="sg-item">
+        <b>${esc(s.worker_id)}</b> (${esc(s.primary_trade)}) · cos=${s.cosine_similarity.toFixed(2)} ·
+        <span class="badge warn">+${s.projected_score_boost.toFixed(3)} BOOST</span><br>
+        <span>${esc(s.recommendation)}</span>
+      </div>`).join("")
+    : `<div style="color:var(--good)">All in-radius candidates match the target trade or no bridging skill gaps detected.</div>`;
+
+  const scores = d.ranked_workers.length ? d.ranked_workers.map(r => r.compatibility_score) : [0.1,0.15,0.2,0.12];
+  $("histPeakTag").textContent = d.ranked_workers.length ? `TOP SCORE ${d.ranked_workers[0].compatibility_score.toFixed(3)}` : "NO MATCHES";
+  $("scoreHist").innerHTML = scores.map((s, idx) =>
+    `<i class="${idx < d.notified_workers_count ? "hi" : ""}" style="height:${Math.max(8, Math.round(s * 100))}%" title="Score ${s.toFixed(4)}"></i>`
+  ).join("");
+
+  const activeWorker = d.ranked_workers.find(x => x.worker_id === selectedWorkerId) || d.ranked_workers[0] || null;
+  renderCalcInspector(d, activeWorker);
+
+  scheduleSpineRebuild();
+}
+
+$("ranked").addEventListener("click",async e=>{
+  const accBtn = e.target.closest("button[data-acc]");
+  if(accBtn){
+    const id = accBtn.dataset.acc;
+    if(!id || !lastJobId) return;
+    const r = await fetch("/api/v1/accept_job",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({job_id:lastJobId,worker_id:id})});
+    const d = await r.json().catch(()=>null);
+    toast(r.ok ? d.message : `${r.status}: ${errText(d)}`, r.ok);
+    logMsg("DISPATCH", r.ok ? d.message : errText(d), r.ok ? "ok" : "err");
+    return;
+  }
+  const row = e.target.closest("tr[data-wid]");
+  if(row && lastRes){
+    selectedWorkerId = row.dataset.wid;
+    render(lastRes);
+    setStageCard("card-calc","node-ping");
+    setTimeout(() => $("card-calc").classList.remove("node-ping"), 600);
+  }
+});
+
+function drawMap(d){
+  const c=180, R=145, km=+$("radius").value, scale=R/km, lat0=+$("lat").value, lon0=+$("lon").value;
+  const info={}; d.ranked_workers.forEach(r=>info[r.worker_id]=r);
+  let s=`<rect width="360" height="360" rx="4" fill="#030304" stroke="#262118"/>
+    <circle cx="${c}" cy="${c}" r="${R}" fill="rgba(224,169,70,.08)" stroke="#ffd37a" stroke-dasharray="4 4"/>
+    <circle cx="${c}" cy="${c}" r="${R/2}" fill="none" stroke="#262118"/>
+    <line x1="${c}" y1="16" x2="${c}" y2="344" stroke="#262118"/><line x1="16" y1="${c}" x2="344" y2="${c}" stroke="#262118"/>
+    <text x="${c+R/2+3}" y="${c-3}">${(km/2).toFixed(1)}km</text><text x="${c+R-32}" y="${c-3}">${km}km</text>`;
+  workers.forEach(w=>{
+    let dx=(w.lon-lon0)*111.32*Math.cos(lat0*Math.PI/180), dy=(w.lat-lat0)*110.574;
+    let px=dx*scale, py=dy*scale; const len=Math.hypot(px,py), maxLen=R*1.18;
+    if(len>maxLen){ px*=maxLen/len; py*=maxLen/len; }
+    const x=c+px, y=c-py, r=info[w.id];
+    const tip=`<title>${esc(w.id)} · ${esc(w.trade)}${r?` · score ${r.compatibility_score}`:" · outside"}</title>`;
+    if(!r) s+=`<circle cx="${x}" cy="${y}" r="4.5" fill="none" stroke="#5e5a52" stroke-width="1.3">${tip}</circle>`;
+    else if(r.notified) s+=`<circle cx="${x}" cy="${y}" r="8.5" fill="#42d392">${tip}</circle><text x="${x}" y="${y+3.5}" text-anchor="middle" style="fill:#030304;font-weight:700">${r.rank}</text>`;
+    else s+=`<circle cx="${x}" cy="${y}" r="5.5" fill="#ffd37a">${tip}</circle>`;
+  });
+  s+=`<path d="M${c} ${c-9} L${c+8} ${c} L${c} ${c+9} L${c-8} ${c} Z" fill="#ffd37a"><title>Job Site</title></path>`;
+  $("map").innerHTML=s;
+}
+
+async function loadMeta(){
+  try{
+    const h=await (await fetch("/api/v1/health")).json();
+    $("status").textContent = h.models_loaded
+      ? `ONLINE · MODELS${h.whisper_model ? " + ASR" : ""}`
+      : "API UP · MODELS MISSING";
+    $("status").className = "pill "+(h.models_loaded?"ok":"bad");
+    logMsg("SYS", `Connected to FastAPI v${h.version} (models=${h.models_loaded}, asr=${h.whisper_model || h.whisper_loaded})`, h.models_loaded?"ok":"err");
+    if(h.models_loaded){
+      const m=await (await fetch("/api/v1/metrics")).json(); renderMetrics(m);
+      await run("match", {silent:true});
+    } else $("metrics").textContent="Run training scripts first.";
+  }catch(e){
+    $("status").textContent="API OFFLINE"; $("status").className="pill bad";
+    logMsg("SYS", "FastAPI endpoint unreachable", "err");
+  }
+}
+function renderMetrics(m){
+  const c=m.classifier,h=m.hmm,r=m.ranker,g=r.gbdt, hl=c.handlabeled, gd=m.guardrail;
+  const row=(name,val,target,ok)=>`<tr><td>${name}</td><td><b>${val}</b></td><td>${target}</td>
+    <td>${ok===null?'<span class="badge">N/A</span>':ok?'<span class="badge good">MET</span>':'<span class="badge bad">MISS</span>'}</td></tr>`;
+  $("metrics").innerHTML = `<table><thead><tr><th>Metric</th><th>Value</th><th>Target</th><th>Status</th></tr></thead><tbody>
+    ${row("Classifier Macro-F1",c.holdout_macro_f1,"≥ 0.88",c.holdout_macro_f1>=0.88)}
+    ${hl?row("NB Macro-F1 (hand-labeled)",hl.macro_f1,"≥ 0.88",hl.macro_f1>=0.88):""}
+    ${row("HMM Accuracy (30d online)",h.online_30d_window_accuracy,"≥ 0.82",h.online_30d_window_accuracy>=0.82)}
+    ${gd?row("Guardrail AUC",gd.holdout_auc,"≥ 0.85",gd.holdout_auc>=0.85):""}
+    ${row("GBDT Hit-Rate@3",g.hit_rate_at_3,"≥ 0.75",g.hit_rate_at_3>=0.75)}
+    ${row("GBDT MRR / ROC-AUC",`${g.mrr} / ${r.holdout_auc}`,"-",null)}
+    </tbody></table>`;
+}
+
+setArea("gulshan"); setScenario("normal"); sliderLabels();
+$("text").value=PRESETS[0][1]; genWorkers();
+$("scoreHist").innerHTML = [18,32,24,48,36,64,42,28].map(v=>`<i style="height:${v}%"></i>`).join("");
+loadMeta();
+scheduleSpineRebuild();
+</script>
+</body>
+</html>

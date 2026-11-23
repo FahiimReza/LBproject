@@ -1,0 +1,26 @@
+{
+  "id2label": {
+    "0": "plumbing",
+    "1": "electrical",
+    "2": "masonry",
+    "3": "carpentry",
+    "4": "painting",
+    "5": "general_labor",
+    "6": "appliance_repair",
+    "7": "welding_metalwork",
+    "8": "cleaning_sanitation",
+    "9": "moving_shifting"
+  },
+  "label2id": {
+    "plumbing": 0,
+    "electrical": 1,
+    "masonry": 2,
+    "carpentry": 3,
+    "painting": 4,
+    "general_labor": 5,
+    "appliance_repair": 6,
+    "welding_metalwork": 7,
+    "cleaning_sanitation": 8,
+    "moving_shifting": 9
+  }
+}
