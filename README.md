@@ -82,3 +82,22 @@ POST /api/v1/broadcast_job — Runs matching and creates a pending broadcast rec
 POST /api/v1/accept_job — Assigns a pending broadcast job to a notified worker (job_id, worker_id).
 
 GET /api/v1/jobs/{job_id} — Fetches current broadcast status and assigned worker.
+
+
+
+
+## Model Checkpoints & Weights
+
+All trained model checkpoints and artifacts can be downloaded from the Google Drive folder:
+**[LABOR-HUB Model Checkpoints (Google Drive)](https://drive.google.com/drive/folders/1hf0jAxRsr2JDW-1XxtsTCmHlNZLyTpAt?usp=drive_link)**
+
+Download the contents from Google Drive and place them inside your local `checkpoints/` directory so they match this layout:
+
+```text
+checkpoints/
+├── whisper-banspeech-dhaka-slang-final/
+├── banglishbert_trade/
+├── tfidf_nb_trade/
+├── gbdt_dual_objective_ranker.joblib
+├── lgbm_fraud_guardrail.joblib
+└── skill_gap_recommender.joblib
