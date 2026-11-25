@@ -59,7 +59,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 2. Start the Server
 Bash
-uvicorn main:app --reload
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
 Web UI: http://127.0.0.1:8000/
 
 Interactive API Docs (Swagger): http://127.0.0.1:8000/docs
