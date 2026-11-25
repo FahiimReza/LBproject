@@ -113,10 +113,12 @@ WHISPER_FORCE_LANGUAGE = os.getenv("WHISPER_FORCE_LANGUAGE", "").strip()
 LOG_TRADE_EDGE_CASES = os.getenv("LOG_TRADE_EDGE_CASES", "1").strip().lower() in {"1", "true", "yes", "on"}
 TRADE_EDGE_LOG_PATH = Path(os.getenv("TRADE_EDGE_LOG_PATH", str(BASE_DIR / "logs" / "trade_edge_cases.jsonl")))
 _EDGE_LOG_LOCK = threading.Lock()
+# Per-request trace of the last classifier decision (used for UI explainability).
+_TRACE = threading.local()
 
 app = FastAPI(
     title="LABOR-HUB // Modular ML Telemetry Backend",
-    version="4.7.2",
+    version="4.8.0",
 )
 
 ACTIVE_JOB_BROADCASTS: Dict[str, dict] = {}
@@ -387,6 +389,56 @@ _REPAIR_FAULT_CUES = [
 ]
 
 
+_DEVICE_CUES = [
+    "pc", "computer", "laptop", "desktop", "printer", "monitor", "ups",
+    "কম্পিউটার", "ল্যাপটপ", "প্রিন্টার", "মনিটর",
+]
+
+_CUE_GROUPS: Dict[str, List[str]] = {
+    "plumbing": _PLUMBING_CUES,
+    "cleaning_sanitation": _CLEANING_CUES,
+    "carpentry": _CARPENTRY_CUES,
+    "moving_shifting": _MOVING_SHIFT_CUES,
+    "appliance_repair": _DEVICE_CUES + _REPAIR_FAULT_CUES,
+}
+
+_FALLBACK_KEYWORDS = {
+    "plumbing": ["plumber", "pipe", "leak", "pani", "panir", "প্লাম্বার", "পাইপ", "লিক", "পানি"],
+    "electrical": ["electric", "electracian", "wiring", "short circuit", "switchboard", "তার", "বোর্ড", "কারেন্ট"],
+    "masonry": ["mistri", "raj", "plaster", "tile", "রাজমিস্ত্রি", "টাইলস", "প্লাস্টার"],
+    "carpentry": ["carpenter", "door", "wood", "furniture", "partition", "কাঠমিস্ত্রি", "দরজা", "পার্টিশন"],
+    "painting": ["paint", "rong", "distemper", "putty", "রং", "পুটি"],
+    "general_labor": ["kuli", "helper", "load", "কুলি", "হেল্পার"],
+    "appliance_repair": ["fridge", "ac", "washing machine", "geyser", "appliance", "pc", "computer", "laptop", "ফ্রিজ", "এসি", "কম্পিউটার"],
+    "welding_metalwork": ["welding", "welder", "grill", "shutter", "gate", "ওয়েল্ডিং", "গ্রিল"],
+    "cleaning_sanitation": ["cleaning", "cleaner", "sanitation", "deep clean", "porishkar", "ক্লিনার", "পরিষ্কার"],
+    "moving_shifting": ["shift", "moving", "relocation", "packing", "শিফট", "বাসা বদল"],
+}
+
+
+def _find_cues(raw_text: str, normalized_text: str, extra: Optional[Dict[str, List[str]]] = None) -> List[dict]:
+    """Lexical cues present in the input (rule cues, or fallback keywords) - powers the UI evidence trace."""
+    combined = f"{raw_text.lower()} {normalized_text}"
+    groups: Dict[str, List[str]] = {t: list(v) for t, v in (extra or _CUE_GROUPS).items()}
+    if extra is None and not _has_device_repair_cue(raw_text, normalized_text):
+        groups.pop("appliance_repair", None)  # device words + fault words must co-occur to count
+
+    found: List[dict] = []
+    seen = set()
+    for trade, cues in groups.items():
+        for cue in cues:
+            whole_word = extra is not None and cue.isascii() and len(cue) <= 3
+            hit = (
+                re.search(rf"(?<!\w){re.escape(cue)}(?!\w)", combined) is not None
+                if whole_word
+                else cue in combined
+            )
+            if hit and (trade, cue) not in seen:
+                seen.add((trade, cue))
+                found.append({"cue": cue, "trade": trade, "word": whole_word})
+    return found[:24]
+
+
 def _normalize_banglish(raw_text: str) -> str:
     """Normalize Devanagari transliteration, diacritics, and colloquial Banglish spellings."""
     cleaned = _transliterate_devanagari(raw_text)
@@ -489,6 +541,14 @@ def _log_trade_edge_case(
     low_confidence: bool,
     overridden: bool,
 ) -> None:
+    _TRACE.last = {
+        "source": source,
+        "normalized_text": normalized_text,
+        "nb_trade": nb_trade,
+        "nb_confidence": round(float(nb_confidence), 4) if nb_confidence is not None else None,
+        "final_trade": final_trade,
+        "overridden": bool(overridden),
+    }
     if not LOG_TRADE_EDGE_CASES:
         return
     if not (low_confidence or overridden):
@@ -747,18 +807,7 @@ def _classify_trade(raw_text: str) -> Tuple[str, float, Dict[str, float]]:
 
     text_l = norm_text.lower()
     scores = {t: 0.05 for t in TRADES}
-    keywords = {
-        "plumbing": ["plumber", "pipe", "leak", "pani", "panir", "প্লাম্বার", "পাইপ", "লিক", "পানি"],
-        "electrical": ["electric", "electracian", "wiring", "short circuit", "switchboard", "তার", "বোর্ড", "কারেন্ট"],
-        "masonry": ["mistri", "raj", "plaster", "tile", "রাজমিস্ত্রি", "টাইলস", "প্লাস্টার"],
-        "carpentry": ["carpenter", "door", "wood", "furniture", "partition", "কাঠমিস্ত্রি", "দরজা", "পার্টিশন"],
-        "painting": ["paint", "rong", "distemper", "putty", "রং", "পুটি"],
-        "general_labor": ["kuli", "helper", "load", "কুলি", "হেল্পার"],
-        "appliance_repair": ["fridge", "ac", "washing machine", "geyser", "appliance", "pc", "computer", "laptop", "ফ্রিজ", "এসি", "কম্পিউটার"],
-        "welding_metalwork": ["welding", "welder", "grill", "shutter", "gate", "ওয়েল্ডিং", "গ্রিল"],
-        "cleaning_sanitation": ["cleaning", "cleaner", "sanitation", "deep clean", "porishkar", "ক্লিনার", "পরিষ্কার"],
-        "moving_shifting": ["shift", "moving", "relocation", "packing", "শিফট", "বাসা বদল"],
-    }
+    keywords = _FALLBACK_KEYWORDS
     for t, kws in keywords.items():
         if any(k in text_l for k in kws):
             scores[t] += 0.75
@@ -878,10 +927,15 @@ def run_match(job: JobRequest) -> dict:
     if not job.raw_text.strip():
         raise HTTPException(status_code=400, detail="Job text cannot be empty.")
 
+    _TRACE.last = {}
+    t_cls0 = time.perf_counter()
     predicted_trade, confidence, trade_probs = _classify_trade(job.raw_text)
+    trace = dict(getattr(_TRACE, "last", None) or {})
+    t_cls1 = time.perf_counter()
     hmm_info = _estimate_market_regime(job)
     wage_idx = hmm_info["market_wage_index"]
     parsed_text_wage = _extract_text_wage(job.raw_text)
+    t_geo0 = time.perf_counter()
 
     ranked: List[dict] = []
     excluded: List[dict] = []
@@ -1023,6 +1077,7 @@ def run_match(job: JobRequest) -> dict:
     low_band = int(round(base_wage * wage_idx * 0.90))
     high_band = int(round(base_wage * wage_idx * 1.15))
 
+    t_grd0 = time.perf_counter()
     guardrail = _compute_guardrail(
         raw_text=job.raw_text,
         predicted_trade=predicted_trade,
@@ -1035,12 +1090,33 @@ def run_match(job: JobRequest) -> dict:
         high_band=high_band,
     )
 
+    t_grd1 = time.perf_counter()
     compared_wage = float(guardrail["effective_wage_evaluated"])
     wage_verdict = (
         "below market" if compared_wage < low_band
         else "above market" if compared_wage > high_band
         else "fair"
     )
+
+    source = trace.get("source", "unknown")
+    explain = {
+        "source": source,
+        "normalized_text": trace.get("normalized_text", ""),
+        "cues": _find_cues(
+            job.raw_text,
+            trace.get("normalized_text", ""),
+            _FALLBACK_KEYWORDS if source == "keyword_fallback" else None,
+        ),
+        "nb_trade": trace.get("nb_trade"),
+        "nb_confidence": trace.get("nb_confidence"),
+        "overridden": bool(trace.get("overridden")),
+    }
+    stage_timings_ms = {
+        "classify": round((t_cls1 - t_cls0) * 1000, 2),
+        "regime": round((t_geo0 - t_cls1) * 1000, 2),
+        "geo_rank": round((t_grd0 - t_geo0) * 1000, 2),
+        "guardrail": round((t_grd1 - t_grd0) * 1000, 2),
+    }
 
     return {
         "predicted_trade": predicted_trade,
@@ -1049,6 +1125,8 @@ def run_match(job: JobRequest) -> dict:
         "trade_probabilities": dict(
             sorted(((k, round(v, 4)) for k, v in trade_probs.items()), key=lambda kv: kv[1], reverse=True)
         ),
+        "explain": explain,
+        "stage_timings_ms": stage_timings_ms,
         **hmm_info,
         "guardrail": guardrail,
         "wage_advice": {
